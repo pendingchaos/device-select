@@ -1,0 +1,7 @@
+To install run
+
+make
+
+then fix the so path in the json file and install the json file to
+
+~/.local/share/vulkan/implicit_layer.d
