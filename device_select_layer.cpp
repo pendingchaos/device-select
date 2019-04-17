@@ -183,6 +183,39 @@ out:
 	return result;
 }
 
+
+VkResult device_select_EnumeratePhysicalDeviceGroups(
+    VkInstance                                  instance,
+    uint32_t*                                   pPhysicalDeviceGroupCount,
+    VkPhysicalDeviceGroupProperties*            pPhysicalDeviceGroupProperties)
+{
+    uint32_t count;
+    VkResult result = device_select_EnumeratePhysicalDevices(instance, &count, NULL);
+	if (result != VK_SUCCESS)
+	    return result;
+
+    VkPhysicalDevice devices[count];
+    result = device_select_EnumeratePhysicalDevices(instance, &count, devices);
+	if (result != VK_SUCCESS)
+	    return result;
+
+    if (pPhysicalDeviceGroupProperties) {
+		if (count > *pPhysicalDeviceGroupCount)
+			result = VK_INCOMPLETE;
+        *pPhysicalDeviceGroupCount = count;
+        for (uint32_t i = 0; i < count; i++) {
+            pPhysicalDeviceGroupProperties[i].sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GROUP_PROPERTIES;
+            pPhysicalDeviceGroupProperties[i].pNext = NULL;
+            pPhysicalDeviceGroupProperties[i].physicalDeviceCount = 1;
+            pPhysicalDeviceGroupProperties[i].physicalDevices[0] = devices[i];
+            pPhysicalDeviceGroupProperties[i].subsetAllocation = VK_FALSE;
+        }
+    } else {
+        *pPhysicalDeviceGroupCount = count;
+    }
+    return VK_SUCCESS;
+}
+
 void  (*get_pdevice_proc_addr(VkInstance instance, const char* name))()
 {
 	auto info = instances[instance];
@@ -197,6 +230,10 @@ void  (*get_instance_proc_addr(VkInstance instance, const char* name))()
 		return (void(*)())DestroyInstance;
 	if (strcmp(name, "vkEnumeratePhysicalDevices") == 0)
 		return (void(*)())device_select_EnumeratePhysicalDevices;
+	if (strcmp(name, "vkEnumeratePhysicalDeviceGroups") == 0)
+		return (void(*)())device_select_EnumeratePhysicalDeviceGroups;
+	if (strcmp(name, "vkEnumeratePhysicalDeviceGroupsKHR") == 0)
+		return (void(*)())device_select_EnumeratePhysicalDeviceGroups;
 
 	auto info = instances[instance];
 	return info.GetInstanceProcAddr(instance, name);
