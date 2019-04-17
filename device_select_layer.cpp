@@ -35,7 +35,7 @@ struct instance_info {
 	PFN_vkEnumeratePhysicalDevices EnumeratePhysicalDevices;
 	PFN_vkGetInstanceProcAddr GetInstanceProcAddr;
 	PFN_GetPhysicalDeviceProcAddr  GetPhysicalDeviceProcAddr;
-	PFN_vkGetPhysicalDeviceProperties2KHR GetPhysicalDeviceProperties2KHR;
+	PFN_vkGetPhysicalDeviceProperties GetPhysicalDeviceProperties;
 };
 
 std::unordered_map<VkInstance, struct instance_info> instances;
@@ -69,7 +69,7 @@ VkResult CreateInstance(
 
     info.DestroyInstance = (PFN_vkDestroyInstance)info.GetInstanceProcAddr(*pInstance, "vkDestroyInstance");
     info.EnumeratePhysicalDevices = (PFN_vkEnumeratePhysicalDevices)info.GetInstanceProcAddr(*pInstance, "vkEnumeratePhysicalDevices");
-    info.GetPhysicalDeviceProperties2KHR = (PFN_vkGetPhysicalDeviceProperties2KHR)info.GetInstanceProcAddr(*pInstance, "vkGetPhysicalDeviceProperties2KHR");
+    info.GetPhysicalDeviceProperties = (PFN_vkGetPhysicalDeviceProperties)info.GetInstanceProcAddr(*pInstance, "vkGetPhysicalDeviceProperties");
 
     instances[*pInstance] = info;
     return VK_SUCCESS;
@@ -86,12 +86,10 @@ void DestroyInstance(VkInstance instance, const VkAllocationCallbacks* pAllocato
 void print_gpu(const instance_info& info, unsigned index, VkPhysicalDevice device) {
 	const char* type = "";
 
-	VkPhysicalDeviceProperties2KHR properties = (VkPhysicalDeviceProperties2KHR){
-		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR
-	};
-	info.GetPhysicalDeviceProperties2KHR(device, &properties);
+	VkPhysicalDeviceProperties properties;
+	info.GetPhysicalDeviceProperties(device, &properties);
 
-	switch(properties.properties.deviceType) {
+	switch(properties.deviceType) {
 		case VK_PHYSICAL_DEVICE_TYPE_OTHER:
 			type = "other";
 			break;
@@ -108,7 +106,7 @@ void print_gpu(const instance_info& info, unsigned index, VkPhysicalDevice devic
 			type = "CPU";
 			break;
 	}
-	fprintf(stderr, "  GPU %d: %x:%x \"%s\" %s\n", index, properties.properties.vendorID, properties.properties.deviceID, properties.properties.deviceName, type);
+	fprintf(stderr, "  GPU %d: %x:%x \"%s\" %s\n", index, properties.vendorID, properties.deviceID, properties.deviceName, type);
 }
 
 VkResult device_select_EnumeratePhysicalDevices(VkInstance instance,
@@ -147,13 +145,11 @@ VkResult device_select_EnumeratePhysicalDevices(VkInstance instance,
 			fprintf(stderr, "failed to parse MESA_VK_DEVICE_SELECT: \"%s\"\n", selection);
 			exit(1);
 		}
-		VkPhysicalDeviceProperties2KHR properties = (VkPhysicalDeviceProperties2KHR){
-			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR
-		};
+		VkPhysicalDeviceProperties properties;
 		for (unsigned i = 0; i < physical_device_count; ++i) {
-			info.GetPhysicalDeviceProperties2KHR(physical_devices[i], &properties);
-			if (properties.properties.vendorID == vendor_id &&
-			    properties.properties.deviceID == device_id) {
+			info.GetPhysicalDeviceProperties(physical_devices[i], &properties);
+			if (properties.vendorID == vendor_id &&
+			    properties.deviceID == device_id) {
 				selected_physical_devices[selected_physical_device_count++] = physical_devices[i];
 			}
 		}
