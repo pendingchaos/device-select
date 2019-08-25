@@ -33,6 +33,7 @@
 struct instance_info {
 	PFN_vkDestroyInstance DestroyInstance;
 	PFN_vkEnumeratePhysicalDevices EnumeratePhysicalDevices;
+	PFN_vkEnumeratePhysicalDeviceGroups EnumeratePhysicalDeviceGroups;
 	PFN_vkGetInstanceProcAddr GetInstanceProcAddr;
 	PFN_GetPhysicalDeviceProcAddr  GetPhysicalDeviceProcAddr;
 	PFN_vkGetPhysicalDeviceProperties GetPhysicalDeviceProperties;
@@ -69,6 +70,7 @@ VkResult CreateInstance(
 
     info.DestroyInstance = (PFN_vkDestroyInstance)info.GetInstanceProcAddr(*pInstance, "vkDestroyInstance");
     info.EnumeratePhysicalDevices = (PFN_vkEnumeratePhysicalDevices)info.GetInstanceProcAddr(*pInstance, "vkEnumeratePhysicalDevices");
+    info.EnumeratePhysicalDeviceGroups = (PFN_vkEnumeratePhysicalDeviceGroups)info.GetInstanceProcAddr(*pInstance, "vkEnumeratePhysicalDeviceGroups");
     info.GetPhysicalDeviceProperties = (PFN_vkGetPhysicalDeviceProperties)info.GetInstanceProcAddr(*pInstance, "vkGetPhysicalDeviceProperties");
 
     instances[*pInstance] = info;
@@ -184,35 +186,67 @@ out:
 }
 
 
+bool device_group_selected(uint32_t dev_count, VkPhysicalDevice *devices,
+                           const VkPhysicalDeviceGroupProperties *group)
+{
+    for (uint32_t i = 0; i < group->physicalDeviceCount; i++) {
+        VkPhysicalDevice dev = group->physicalDevices[i];
+        bool found = false;
+        for (uint32_t j = 0; !found && (j < dev_count); j++) {
+            if (devices[j] == dev) {
+                found = true;
+            }
+        }
+        if (!found) {
+            return false;
+        }
+    }
+    return true;
+}
+
 VkResult device_select_EnumeratePhysicalDeviceGroups(
     VkInstance                                  instance,
     uint32_t*                                   pPhysicalDeviceGroupCount,
     VkPhysicalDeviceGroupProperties*            pPhysicalDeviceGroupProperties)
 {
-    uint32_t count;
-    VkResult result = device_select_EnumeratePhysicalDevices(instance, &count, NULL);
+	auto info = instances[instance];
+
+    uint32_t dev_count;
+    VkResult result = device_select_EnumeratePhysicalDevices(instance, &dev_count, NULL);
 	if (result != VK_SUCCESS)
 	    return result;
 
-    VkPhysicalDevice devices[count];
-    result = device_select_EnumeratePhysicalDevices(instance, &count, devices);
+    VkPhysicalDevice devices[dev_count];
+    result = device_select_EnumeratePhysicalDevices(instance, &dev_count, devices);
 	if (result != VK_SUCCESS)
 	    return result;
 
-    if (pPhysicalDeviceGroupProperties) {
-		if (count > *pPhysicalDeviceGroupCount)
-			result = VK_INCOMPLETE;
-        *pPhysicalDeviceGroupCount = count;
-        for (uint32_t i = 0; i < count; i++) {
-            pPhysicalDeviceGroupProperties[i].sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GROUP_PROPERTIES;
-            pPhysicalDeviceGroupProperties[i].pNext = NULL;
-            pPhysicalDeviceGroupProperties[i].physicalDeviceCount = 1;
-            pPhysicalDeviceGroupProperties[i].physicalDevices[0] = devices[i];
-            pPhysicalDeviceGroupProperties[i].subsetAllocation = VK_FALSE;
+    uint32_t group_count;
+    result = info.EnumeratePhysicalDeviceGroups(instance, &group_count, NULL);
+	if (result != VK_SUCCESS)
+	    return result;
+
+    VkPhysicalDeviceGroupProperties groups[group_count];
+    result = info.EnumeratePhysicalDeviceGroups(instance, &group_count, groups);
+	if (result != VK_SUCCESS)
+	    return result;
+
+    uint32_t max_groups = *pPhysicalDeviceGroupCount;
+    *pPhysicalDeviceGroupCount = 0;
+
+    for (uint32_t i = 0; i < group_count; i++) {
+        if (!device_group_selected(dev_count, devices, &groups[i])) {
+            continue;
         }
-    } else {
-        *pPhysicalDeviceGroupCount = count;
+
+        if (pPhysicalDeviceGroupProperties && *pPhysicalDeviceGroupCount < max_groups) {
+            pPhysicalDeviceGroupProperties[*pPhysicalDeviceGroupCount] = groups[i];
+        } else if (pPhysicalDeviceGroupProperties) {
+            result = VK_INCOMPLETE;
+        }
+        (*pPhysicalDeviceGroupCount)++;
     }
+
     return VK_SUCCESS;
 }
 
